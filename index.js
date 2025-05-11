@@ -21,12 +21,46 @@ let bot;
 if (isProduction) {
   // In production, use webhook mode
   bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
-  const webhookURL = `https://${process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || 'raplayerfinandy.onrender.com'}/webhook`;
+  
+  // Improved webhook URL construction with more detailed logging
+  let hostname = process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || 'raplayerfinandy.onrender.com';
+  // Remove any https:// prefix if present
+  hostname = hostname.replace(/^https?:\/\//, '');
+  const webhookURL = `https://${hostname}/webhook`;
+  
+  console.log('Production environment detected');
+  console.log(`RENDER_EXTERNAL_URL: ${process.env.RENDER_EXTERNAL_URL || 'not set'}`);
+  console.log(`RENDER_EXTERNAL_HOSTNAME: ${process.env.RENDER_EXTERNAL_HOSTNAME || 'not set'}`);
   console.log(`Setting webhook to: ${webhookURL}`);
-  bot.setWebHook(webhookURL).then(
-    () => console.log(`Webhook set to ${webhookURL}`),
+  
+  // First get current webhook info
+  bot.getWebHookInfo().then(info => {
+    console.log('Current webhook info:', info);
+    
+    // Set the webhook
+    return bot.setWebHook(webhookURL);
+  }).then(
+    () => console.log(`Webhook successfully set to ${webhookURL}`),
     (error) => console.error('Failed to set webhook:', error)
   );
+  
+  // Add a function to manually check webhook status
+  app.get('/webhook-status', async (req, res) => {
+    try {
+      const info = await bot.getWebHookInfo();
+      res.json({ 
+        success: true, 
+        webhookInfo: info,
+        isConfigured: !!info.url
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Error checking webhook status', 
+        error: error.message 
+      });
+    }
+  });
 } else {
   // In development, use polling mode (no webhook)
   bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
@@ -42,6 +76,8 @@ if (isProduction) {
 // Function to handle incoming messages
 async function handleIncomingMessage(msg) {
   try {
+    console.log('Processing message:', msg.text, 'from user ID:', msg.from.id);
+    
     // Send trading signal
     await sendTradingSignal();
     
@@ -64,7 +100,7 @@ async function handleIncomingMessage(msg) {
 app.post('/webhook', async (req, res) => {
   try {
     const update = req.body;
-    console.log('Received update from Telegram webhook:', update);
+    console.log('Received update from Telegram webhook:', JSON.stringify(update));
 
     // Check if it's a message
     if (update.message) {
