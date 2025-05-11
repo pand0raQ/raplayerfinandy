@@ -86,25 +86,37 @@ app.post('/webhook', async (req, res) => {
     
     // Enhanced handling for different types of updates
     let messageToProcess = null;
+    let sourceType = '';
     
     if (update?.message) {
       console.log('Processing as regular message');
       messageToProcess = update.message;
+      sourceType = 'message';
     } else if (update?.channel_post) {
       console.log('Processing as channel post');
       messageToProcess = update.channel_post;
+      sourceType = 'channel_post';
     } else if (update?.edited_message) {
       console.log('Processing as edited message');
       messageToProcess = update.edited_message;
+      sourceType = 'edited_message';
     } else if (update?.edited_channel_post) {
       console.log('Processing as edited channel post');
       messageToProcess = update.edited_channel_post;
+      sourceType = 'edited_channel_post';
     }
     
     // Process the message if we found a valid one
     if (messageToProcess) {
-      console.log('Message to process:', JSON.stringify(messageToProcess));
-      await handleIncomingMessage(messageToProcess);
+      console.log(`Message to process (${sourceType}):`, JSON.stringify(messageToProcess));
+      
+      // Special handling for channel posts
+      if (sourceType === 'channel_post' || sourceType === 'edited_channel_post') {
+        await processChannelPost(messageToProcess);
+      } else {
+        // Regular message handling
+        await handleIncomingMessage(messageToProcess);
+      }
     } else {
       console.log('No valid message found in update:', JSON.stringify(update));
     }
@@ -133,7 +145,22 @@ async function handleIncomingMessage(msg) {
     console.log('HANDLING MESSAGE OBJECT:', JSON.stringify(msg, null, 2));
     
     // Safe access of message properties using optional chaining
-    const messageText = msg?.text || msg?.caption || 'No text';
+    // Check for forwarded messages, which can have different structures
+    let messageText = '';
+    
+    // Try to get text from various locations in message object
+    if (msg?.text) {
+      messageText = msg.text;
+    } else if (msg?.caption) {
+      messageText = msg.caption;
+    } else if (msg?.forward_text) {
+      messageText = msg.forward_text;
+    } else if (msg?.forward_from_message_id) {
+      messageText = `Forwarded message ID: ${msg.forward_from_message_id}`;
+    } else {
+      messageText = 'No text';
+    }
+    
     const userId = msg?.from?.id || 'Unknown';
     const chatId = msg?.chat?.id;
     
@@ -170,11 +197,14 @@ async function handleIncomingMessage(msg) {
         await sendSpecificTradingSignal(symbol, side);
         // Log successful processing
         console.log(`Successfully processed signal: ${symbol} ${side}`);
+        
+        // Send a minimal acknowledgment
+        await bot.sendMessage(chatId, '✓');
       } catch (error) {
         console.error('Error processing incoming trading signal:', error.message);
         await bot.sendMessage(
           chatId,
-          'Error processing incoming trading signal. Please check server logs.'
+          'Error processing signal. Check logs.'
         );
       }
     } else {
@@ -182,6 +212,9 @@ async function handleIncomingMessage(msg) {
       try {
         await sendTradingSignal();
         console.log('Default trading signal sent successfully');
+        
+        // Send a minimal acknowledgment
+        await bot.sendMessage(chatId, '✓');
       } catch (error) {
         console.error('Error sending trading signal:', error.message);
         
@@ -189,7 +222,7 @@ async function handleIncomingMessage(msg) {
         try {
           await bot.sendMessage(
             chatId,
-            'Sorry, there was an error sending your trading signal. Please try again later.'
+            'Error sending signal'
           );
         } catch (sendError) {
           console.error('Failed to send error message to user:', sendError.message);
@@ -314,8 +347,124 @@ app.listen(PORT, () => {
   
   if (isProduction) {
     console.log('Server running in webhook mode');
+    
+    // Schedule regular checks to log activity (every 5 minutes)
+    setInterval(() => {
+      console.log(`[${new Date().toISOString()}] Server alive check - waiting for webhook events`);
+      
+      // Check webhook status periodically
+      bot.getWebHookInfo().then(info => {
+        console.log('Current webhook info:', info);
+        console.log(`Pending updates: ${info.pending_update_count}`);
+      }).catch(err => {
+        console.error('Error checking webhook status:', err);
+      });
+    }, 5 * 60 * 1000); // Every 5 minutes
+    
+    // Initial check
+    console.log(`[${new Date().toISOString()}] Initial server check`);
   } else {
     console.log('Server running in polling mode');
     console.log('You can test signal sending at http://localhost:3000/trigger-signal');
   }
-}); 
+});
+
+// Add a test endpoint that can be used to verify the server is reachable
+app.get('/test', (req, res) => {
+  console.log(`[${new Date().toISOString()}] Test endpoint accessed`);
+  res.json({
+    status: 'ok',
+    message: 'Server is running!',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Add a webhook debug endpoint that simulates receiving a message
+app.get('/debug-webhook', async (req, res) => {
+  try {
+    console.log(`[${new Date().toISOString()}] Debug webhook endpoint accessed`);
+    
+    // Create a simulated message
+    const simulatedUpdate = {
+      message: {
+        message_id: 12345,
+        from: {
+          id: 54321,
+          first_name: 'Debug',
+          last_name: 'User'
+        },
+        chat: {
+          id: 54321,
+          first_name: 'Debug',
+          last_name: 'User',
+          type: 'private'
+        },
+        date: Math.floor(Date.now() / 1000),
+        text: 'DOGEFDUSD Test message'
+      }
+    };
+    
+    console.log('Simulating webhook with update:', JSON.stringify(simulatedUpdate, null, 2));
+    
+    // Process this simulated update
+    if (simulatedUpdate.message) {
+      await handleIncomingMessage(simulatedUpdate.message);
+      res.json({
+        status: 'ok',
+        message: 'Debug webhook processed successfully',
+        update: simulatedUpdate
+      });
+    } else {
+      res.status(400).json({
+        status: 'error',
+        message: 'Invalid simulated update'
+      });
+    }
+  } catch (error) {
+    console.error('Error in debug webhook:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error processing debug webhook',
+      error: error.message
+    });
+  }
+});
+
+// Function to process channel posts
+async function processChannelPost(post) {
+  try {
+    console.log('Processing channel post:', JSON.stringify(post, null, 2));
+    
+    // Extract text from various possible locations
+    const text = post?.text || post?.caption || 'No text';
+    const channelId = post?.chat?.id;
+    const channelTitle = post?.chat?.title || 'Unknown channel';
+    
+    console.log(`Channel post from "${channelTitle}" (${channelId}): "${text}"`);
+    
+    // Check if this post contains trading signal info
+    if (text.includes('DOGEFDUSD')) {
+      console.log('Detected trading signal in channel post:', text);
+      
+      const symbol = 'DOGEFDUSD';
+      
+      // Determine if this is a buy or sell signal
+      let side = 'buy'; // Default
+      if (text.includes('position is closed') || 
+          text.includes('#CLOSED') || 
+          text.includes('SHORT')) {
+        side = 'sell';
+      }
+      
+      // Process the trading signal
+      await sendSpecificTradingSignal(symbol, side);
+      console.log(`Successfully processed channel signal: ${symbol} ${side}`);
+      
+      // No confirmation message since this is a channel post
+    } else {
+      console.log('Channel post does not contain a trading signal');
+    }
+  } catch (error) {
+    console.error('Error processing channel post:', error);
+  }
+} 
