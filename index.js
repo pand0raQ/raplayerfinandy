@@ -340,6 +340,121 @@ app.get('/trigger-signal', async (req, res) => {
   }
 });
 
+// API endpoint to receive signals from external systems
+app.post('/api/signal', async (req, res) => {
+  try {
+    console.log('Received API signal request:', JSON.stringify(req.body, null, 2));
+    
+    // Extract signal data from request body
+    const { symbol, side, message } = req.body;
+    
+    // Default to DOGEFDUSD if no symbol provided
+    const signalSymbol = symbol || 'DOGEFDUSD';
+    
+    // Default to buy if no side provided
+    let signalSide = side || 'buy';
+    
+    // If a message is provided, try to determine side from message content
+    if (message) {
+      if (message.includes('position is closed') || 
+          message.includes('#CLOSED') || 
+          message.includes('SHORT')) {
+        signalSide = 'sell';
+      }
+    }
+    
+    // Log the signal being processed
+    console.log(`Processing API signal: ${signalSymbol} ${signalSide}`);
+    
+    // Send the trading signal
+    const result = await sendSpecificTradingSignal(signalSymbol, signalSide);
+    
+    // Return success response
+    res.json({ 
+      success: true, 
+      message: 'Signal processed successfully', 
+      signal: {
+        symbol: signalSymbol,
+        side: signalSide
+      },
+      result 
+    });
+  } catch (error) {
+    console.error('Error processing API signal:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error processing signal', 
+      error: error.message 
+    });
+  }
+});
+
+// API endpoint to process raw message text
+app.post('/api/raw-message', async (req, res) => {
+  try {
+    console.log('Received raw message request:', JSON.stringify(req.body, null, 2));
+    
+    // Extract the message text from the request body
+    const { message, text, content } = req.body;
+    
+    // Try to get the message text from various possible fields
+    const messageText = message || text || content || '';
+    
+    if (!messageText) {
+      return res.status(400).json({
+        success: false,
+        message: 'No message text provided. Please include "message", "text", or "content" field.'
+      });
+    }
+    
+    console.log(`Processing raw message text: "${messageText}"`);
+    
+    // Check if this is a trading signal
+    if (messageText.includes('DOGEFDUSD')) {
+      console.log('Detected trading signal in raw message');
+      
+      const symbol = 'DOGEFDUSD';
+      
+      // Determine if this is a buy or sell signal
+      let side = 'buy'; // Default
+      if (messageText.includes('position is closed') || 
+          messageText.includes('#CLOSED') || 
+          messageText.includes('SHORT')) {
+        side = 'sell';
+      }
+      
+      // Process the trading signal
+      const result = await sendSpecificTradingSignal(symbol, side);
+      console.log(`Successfully processed raw message signal: ${symbol} ${side}`);
+      
+      // Return success response
+      res.json({
+        success: true,
+        message: 'Signal processed successfully',
+        signal: {
+          symbol,
+          side
+        },
+        result
+      });
+    } else {
+      // No trading signal found in the message
+      console.log('No trading signal found in raw message');
+      res.status(400).json({
+        success: false,
+        message: 'No trading signal found in the provided message'
+      });
+    }
+  } catch (error) {
+    console.error('Error processing raw message:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing message',
+      error: error.message
+    });
+  }
+});
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
