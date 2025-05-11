@@ -1,0 +1,120 @@
+
+        <html>
+          <head>
+            <title>Bot Logs</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow: auto; }
+              .controls { margin-bottom: 20px; }
+              select, input, button { padding: 8px; margin-right: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>Telegram Bot Logs</h1>
+            <div class="controls">
+              <form action="/logs" method="get">
+                <select name="type">
+                  <option value="webhook_update" >Webhook Updates</option>
+                  <option value="telegram_message" >Telegram Messages</option>
+                  <option value="webhook_error" >Webhook Errors</option>
+                  <option value="finandy_success" >Finandy Success</option>
+                  <option value="finandy_error" >Finandy Error</option>
+                  <option value="raw_webhook" selected>Raw Webhook</option>
+                  <option value="channel_post" >Channel Posts</option>
+                  <option value="channel_signal_success" >Channel Signal Success</option>
+                  <option value="channel_post_error" >Channel Post Errors</option>
+                </select>
+                <input type="date" name="date" value="2025-05-11">
+                <button type="submit">View Logs</button>
+              </form>
+            </div>
+            <h2>2 Logs Found</h2>
+            <pre>[
+  {
+    "timestamp": "2025-05-11T16:46:16.558Z",
+    "type": "raw_webhook",
+    "data": {
+      "timestamp": "2025-05-11T16:46:16.558Z",
+      "headers": {
+        "host": "raplayerfinandy.onrender.com",
+        "user-agent": "curl/8.7.1",
+        "content-length": "268",
+        "accept": "*/*",
+        "accept-encoding": "gzip, br",
+        "cdn-loop": "cloudflare; loops=1",
+        "cf-connecting-ip": "94.43.252.28",
+        "cf-ipcountry": "GE",
+        "cf-ray": "93e326c74ad92dd1-SEA",
+        "cf-visitor": "{\"scheme\":\"https\"}",
+        "content-type": "application/json",
+        "render-proxy-ttl": "4",
+        "rndr-id": "48a242d9-dd1e-4cd2",
+        "true-client-ip": "94.43.252.28",
+        "x-forwarded-for": "94.43.252.28, 108.162.245.237, 10.223.2.66",
+        "x-forwarded-proto": "https",
+        "x-request-start": "1746981976377737"
+      },
+      "body": {
+        "update_id": 123456789,
+        "message": {
+          "message_id": 123,
+          "from": {
+            "id": 12345678,
+            "first_name": "Test",
+            "username": "testuser"
+          },
+          "chat": {
+            "id": 12345678,
+            "first_name": "Test",
+            "username": "testuser",
+            "type": "private"
+          },
+          "date": 1612345678,
+          "text": "DOGEFDUSD testing"
+        }
+      }
+    }
+  },
+  {
+    "timestamp": "2025-05-11T16:46:41.871Z",
+    "type": "raw_webhook",
+    "data": {
+      "timestamp": "2025-05-11T16:46:41.871Z",
+      "headers": {
+        "host": "raplayerfinandy.onrender.com",
+        "user-agent": "curl/8.7.1",
+        "content-length": "251",
+        "accept": "*/*",
+        "accept-encoding": "gzip, br",
+        "cdn-loop": "cloudflare; loops=1",
+        "cf-connecting-ip": "94.43.252.28",
+        "cf-ipcountry": "GE",
+        "cf-ray": "93e32766cde22dd1-SEA",
+        "cf-visitor": "{\"scheme\":\"https\"}",
+        "content-type": "application/json",
+        "render-proxy-ttl": "4",
+        "rndr-id": "33b3b2ca-3274-4d7d",
+        "true-client-ip": "94.43.252.28",
+        "x-forwarded-for": "94.43.252.28, 108.162.245.39, 10.223.67.51",
+        "x-forwarded-proto": "https",
+        "x-request-start": "1746982001869983"
+      },
+      "body": {
+        "update_id": 123456790,
+        "channel_post": {
+          "message_id": 456,
+          "chat": {
+            "id": -1001234567890,
+            "title": "Test Channel",
+            "type": "channel"
+          },
+          "date": 1612345679,
+          "text": "🥳 DOGEFDUSD spot 610399\n        LONG position is closed\n        $0.05 #CLOSED"
+        }
+      }
+    }
+  }
+]</pre>
+          </body>
+        </html>
+      

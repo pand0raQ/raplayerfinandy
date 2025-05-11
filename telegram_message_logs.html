@@ -1,0 +1,76 @@
+
+        <html>
+          <head>
+            <title>Bot Logs</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow: auto; }
+              .controls { margin-bottom: 20px; }
+              select, input, button { padding: 8px; margin-right: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>Telegram Bot Logs</h1>
+            <div class="controls">
+              <form action="/logs" method="get">
+                <select name="type">
+                  <option value="webhook_update" >Webhook Updates</option>
+                  <option value="telegram_message" selected>Telegram Messages</option>
+                  <option value="webhook_error" >Webhook Errors</option>
+                  <option value="finandy_success" >Finandy Success</option>
+                  <option value="finandy_error" >Finandy Error</option>
+                  <option value="raw_webhook" >Raw Webhook</option>
+                  <option value="channel_post" >Channel Posts</option>
+                  <option value="channel_signal_success" >Channel Signal Success</option>
+                  <option value="channel_post_error" >Channel Post Errors</option>
+                </select>
+                <input type="date" name="date" value="2025-05-11">
+                <button type="submit">View Logs</button>
+              </form>
+            </div>
+            <h2>2 Logs Found</h2>
+            <pre>[
+  {
+    "timestamp": "2025-05-11T16:46:16.558Z",
+    "type": "telegram_message",
+    "data": {
+      "sourceType": "message",
+      "messageToProcess": {
+        "message_id": 123,
+        "from": {
+          "id": 12345678,
+          "first_name": "Test",
+          "username": "testuser"
+        },
+        "chat": {
+          "id": 12345678,
+          "first_name": "Test",
+          "username": "testuser",
+          "type": "private"
+        },
+        "date": 1612345678,
+        "text": "DOGEFDUSD testing"
+      }
+    }
+  },
+  {
+    "timestamp": "2025-05-11T16:46:41.872Z",
+    "type": "telegram_message",
+    "data": {
+      "sourceType": "channel_post",
+      "messageToProcess": {
+        "message_id": 456,
+        "chat": {
+          "id": -1001234567890,
+          "title": "Test Channel",
+          "type": "channel"
+        },
+        "date": 1612345679,
+        "text": "🥳 DOGEFDUSD spot 610399\n        LONG position is closed\n        $0.05 #CLOSED"
+      }
+    }
+  }
+]</pre>
+          </body>
+        </html>
+      

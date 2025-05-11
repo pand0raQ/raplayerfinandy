@@ -260,6 +260,16 @@ async function handleIncomingMessage(msg) {
       return;
     }
 
+    // Special command to show chat ID
+    if (messageText.toLowerCase() === '/id' || messageText.toLowerCase() === 'id') {
+      console.log('Sending chat ID information');
+      await bot.sendMessage(
+        chatId,
+        `Your chat ID is: ${chatId}\nYour user ID is: ${userId}\n\nUse this ID in your bot configuration.`
+      );
+      return;
+    }
+
     // Add a 2-second timeout before processing the message
     await new Promise(resolve => setTimeout(resolve, 2000));
     console.log('Continuing after 2-second timeout');
@@ -415,7 +425,88 @@ async function sendTradingSignal() {
 
 // Health check endpoint
 app.get('/', (req, res) => {
-  res.send('Trading Bot Server is running!');
+  res.send(`
+    <html>
+      <head>
+        <title>Finandy Telegram Bot</title>
+        <style>
+          body { font-family: sans-serif; margin: 20px; max-width: 800px; margin: 0 auto; padding: 20px; }
+          h1 { color: #333; }
+          .card { border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 20px; }
+          .card h2 { margin-top: 0; color: #444; }
+          a.button { display: inline-block; background: #4CAF50; color: white; padding: 10px 15px; 
+                    text-decoration: none; border-radius: 4px; margin-right: 10px; margin-bottom: 10px; }
+          .status { padding: 10px; background: #e8f5e9; border-radius: 4px; margin-bottom: 20px; }
+          .section { margin-bottom: 30px; }
+        </style>
+      </head>
+      <body>
+        <h1>Finandy Telegram Bot</h1>
+        
+        <div class="status">
+          <p>✅ Bot Server is running!</p>
+          <p>Environment: ${process.env.NODE_ENV || 'Development'}</p>
+          <p>Admin Chat ID: ${process.env.ADMIN_CHAT_ID || 'Not set'}</p>
+        </div>
+        
+        <div class="section">
+          <h2>Configuration</h2>
+          <div class="card">
+            <h2>Bot Settings</h2>
+            <p>Configure your bot's admin chat and check webhook status.</p>
+            <a class="button" href="/set-admin-chat">Set Admin Chat ID</a>
+            <a class="button" href="/webhook-status">Check Webhook Status</a>
+            <a class="button" href="/test-chat/${process.env.ADMIN_CHAT_ID || '0'}">Test Admin Chat</a>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>Logs & Diagnostics</h2>
+          <div class="card">
+            <h2>View Logs</h2>
+            <p>Check different types of logs to troubleshoot issues.</p>
+            <a class="button" href="/logs?type=webhook_update">Webhook Updates</a>
+            <a class="button" href="/logs?type=telegram_message">Telegram Messages</a>
+            <a class="button" href="/logs?type=channel_post">Channel Posts</a>
+            <a class="button" href="/logs?type=channel_signal_success">Channel Signals</a>
+            <a class="button" href="/analyze-webhooks">Analyze Raw Webhooks</a>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>Testing Tools</h2>
+          <div class="card">
+            <h2>Test Functionality</h2>
+            <p>Send test signals and simulate webhook events.</p>
+            <a class="button" href="/test-webhook">Test Webhook Payload</a>
+            <a class="button" href="/test-signal/buy">Test Buy Signal</a>
+            <a class="button" href="/test-signal/sell">Test Sell Signal</a>
+            <a class="button" href="/trigger-signal">Trigger Default Signal</a>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>Help</h2>
+          <div class="card">
+            <h2>Usage Instructions</h2>
+            <p>To get your chat ID:</p>
+            <ol>
+              <li>Find the bot on Telegram: <strong>@finandy156842bot</strong></li>
+              <li>Send a message with just "id" or "/id"</li>
+              <li>The bot will reply with your chat ID</li>
+              <li>Use that ID in the "Set Admin Chat ID" page</li>
+            </ol>
+            <p>For channel messages:</p>
+            <ol>
+              <li>Add the bot as an admin to your channel</li>
+              <li>Enable message access for the bot</li>
+              <li>Send messages containing "DOGEFDUSD" to trigger processing</li>
+            </ol>
+          </div>
+        </div>
+      </body>
+    </html>
+  `);
 });
 
 // Helper endpoint to manually trigger a signal (useful for testing)
@@ -868,7 +959,7 @@ app.get('/logs', (req, res) => {
             <title>Bot Logs</title>
             <style>
               body { font-family: sans-serif; margin: 20px; }
-              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow: auto; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
               .controls { margin-bottom: 20px; }
               select, input, button { padding: 8px; margin-right: 10px; }
             </style>
@@ -1260,5 +1351,92 @@ app.get('/analyze-webhooks', (req, res) => {
     }
   } catch (error) {
     res.status(500).send(`Error analyzing webhooks: ${error.message}`);
+  }
+});
+
+// Add an endpoint to manage admin chat ID
+app.get('/set-admin-chat', (req, res) => {
+  try {
+    const chatId = req.query.id;
+    
+    if (!chatId) {
+      return res.send(`
+        <html>
+          <head>
+            <title>Set Admin Chat ID</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
+              .form { margin: 20px 0; }
+              input, button { padding: 8px; margin-right: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>Set Admin Chat ID</h1>
+            <p>The admin chat ID is used for notifications and as a fallback for Finandy messages.</p>
+            <p>Current Admin Chat ID: <pre>${process.env.ADMIN_CHAT_ID || 'Not set'}</pre></p>
+            
+            <div class="form">
+              <form action="/set-admin-chat" method="get">
+                <input type="text" name="id" placeholder="Enter chat ID (e.g., 123456789)" size="30">
+                <button type="submit">Set Admin Chat ID</button>
+              </form>
+            </div>
+            
+            <p>To find your chat ID, send a message with "id" or "/id" to your bot.</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    // Store the chat ID in memory (not persistent across restarts)
+    process.env.ADMIN_CHAT_ID = chatId;
+    
+    // Send a test message to this chat
+    bot.sendMessage(chatId, `This chat has been set as the admin chat (ID: ${chatId})`).then(
+      () => {
+        res.send(`
+          <html>
+            <head>
+              <title>Admin Chat ID Set</title>
+              <style>
+                body { font-family: sans-serif; margin: 20px; }
+                pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
+                .success { color: green; font-weight: bold; }
+              </style>
+            </head>
+            <body>
+              <h1>Admin Chat ID Set</h1>
+              <p class="success">Successfully set admin chat ID and sent a test message!</p>
+              <p>Admin Chat ID: <pre>${chatId}</pre></p>
+              <p><a href="/">Return to home</a></p>
+            </body>
+          </html>
+        `);
+      },
+      (error) => {
+        res.status(400).send(`
+          <html>
+            <head>
+              <title>Error Setting Admin Chat</title>
+              <style>
+                body { font-family: sans-serif; margin: 20px; }
+                pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
+                .error { color: red; font-weight: bold; }
+              </style>
+            </head>
+            <body>
+              <h1>Error Setting Admin Chat</h1>
+              <p class="error">Failed to send test message to the chat ID.</p>
+              <p>This likely means the chat ID is invalid or the bot doesn't have access to it.</p>
+              <p>Error: <pre>${error.message}</pre></p>
+              <p><a href="/set-admin-chat">Try again</a></p>
+            </body>
+          </html>
+        `);
+      }
+    );
+  } catch (error) {
+    res.status(500).send(`Error setting admin chat: ${error.message}`);
   }
 }); 
