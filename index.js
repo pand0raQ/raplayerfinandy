@@ -8,6 +8,7 @@ const path = require('path');
 // Environment variables
 const PORT = process.env.PORT || 3000;
 const TELEGRAM_BOT_TOKEN = '6920059388:AAF4NxnG6hGc2B0CkWSxceOXLAROJF9UI4M';
+const REPLAYER_BOT_TOKEN = '7675334720:AAHhaHxlJpmvx3Ep-cgDkk3q-YR74-Nm2zc'; // New replayer bot token
 const SIGNAL_URL = 'https://hook.finandy.com/yO3KJnXGQbpKnkbLrlUK';
 const SIGNAL_SECRET = 'e2kici7dcc';
 // Logging service URL - this will receive all message data for debugging
@@ -20,8 +21,11 @@ const isProduction = process.env.NODE_ENV === 'production' || !!process.env.REND
 const app = express();
 app.use(express.json());
 
-// Initialize Telegram bot
+// Initialize Telegram bots
 let bot;
+// Initialize second bot for message forwarding (always in API mode)
+const replayerBot = new TelegramBot(REPLAYER_BOT_TOKEN);
+
 if (isProduction) {
   // In production, use webhook mode
   bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
@@ -259,6 +263,37 @@ async function handleIncomingMessage(msg) {
       console.error('Invalid chat ID in message:', JSON.stringify(msg));
       return;
     }
+    
+    // Forward the message to the replayer bot
+    try {
+      // Since we don't have a predefined target chat ID for the replayer bot,
+      // We need to store chats that the replayer bot will respond to
+      // For example, we can forward to a specific chat ID or channel
+      const replayerTargetChatId = process.env.REPLAYER_TARGET_CHAT_ID || '-1001234567890'; // Set this to a real channel or group ID
+      
+      // Forward as a new message
+      if (msg.text) {
+        await replayerBot.sendMessage(replayerTargetChatId, msg.text);
+        console.log(`Message forwarded to replayer bot: ${msg.text}`);
+      } else if (msg.caption) {
+        // If it's a media message with caption
+        if (msg.photo) {
+          // Get the largest photo (last in array)
+          const photo = msg.photo[msg.photo.length - 1];
+          await replayerBot.sendPhoto(replayerTargetChatId, photo.file_id, { caption: msg.caption });
+        } else if (msg.document) {
+          await replayerBot.sendDocument(replayerTargetChatId, msg.document.file_id, { caption: msg.caption });
+        } else if (msg.video) {
+          await replayerBot.sendVideo(replayerTargetChatId, msg.video.file_id, { caption: msg.caption });
+        } else {
+          // If we can't determine the media type, just forward the text
+          await replayerBot.sendMessage(replayerTargetChatId, msg.caption);
+        }
+        console.log(`Media message forwarded to replayer bot with caption: ${msg.caption}`);
+      }
+    } catch (forwardError) {
+      console.error('Error forwarding message to replayer bot:', forwardError);
+    }
 
     // Special command to show chat ID
     if (messageText.toLowerCase() === '/id' || messageText.toLowerCase() === 'id') {
@@ -274,9 +309,9 @@ async function handleIncomingMessage(msg) {
     await new Promise(resolve => setTimeout(resolve, 2000));
     console.log('Continuing after 2-second timeout');
 
-    // Check if this is a trading signal message - check both text and caption fields
+    // Check if this is a specific trading signal message with a symbol
     if (messageText.includes('DOGEFDUSD')) {
-      console.log('Detected incoming trading signal message:', messageText);
+      console.log('Detected incoming specific trading signal message:', messageText);
       
       const symbol = 'DOGEFDUSD'; // This is consistent
       
@@ -297,7 +332,7 @@ async function handleIncomingMessage(msg) {
         console.log(`Successfully processed signal: ${symbol} ${side}`);
         
         // Send a minimal acknowledgment
-        await bot.sendMessage(chatId, '✓');
+        await bot.sendMessage(chatId, '✓ Signal sent');
       } catch (error) {
         console.error('Error processing incoming trading signal:', error.message);
         await bot.sendMessage(
@@ -306,21 +341,22 @@ async function handleIncomingMessage(msg) {
         );
       }
     } else {
-      // For regular messages (not trading signals), use the default behavior
+      // For ANY message, restart trading strategy by sending the default signal
+      console.log('Restarting trading strategy by sending default signal');
       try {
         await sendTradingSignal();
-        console.log('Default trading signal sent successfully');
+        console.log('Trading strategy restarted successfully');
         
-        // Send a minimal acknowledgment
-        await bot.sendMessage(chatId, '✓');
+        // Send a detailed acknowledgment
+        await bot.sendMessage(chatId, '✓ Trading strategy restarted');
       } catch (error) {
-        console.error('Error sending trading signal:', error.message);
+        console.error('Error restarting trading strategy:', error.message);
         
         // Try to notify the user of the error
         try {
           await bot.sendMessage(
             chatId,
-            'Error sending signal'
+            'Error restarting trading strategy'
           );
         } catch (sendError) {
           console.error('Failed to send error message to user:', sendError.message);
@@ -428,7 +464,7 @@ app.get('/', (req, res) => {
   res.send(`
     <html>
       <head>
-        <title>Finandy Telegram Bot</title>
+        <title>Finandy Trading Strategy Restart Service</title>
         <style>
           body { font-family: sans-serif; margin: 20px; max-width: 800px; margin: 0 auto; padding: 20px; }
           h1 { color: #333; }
@@ -442,10 +478,10 @@ app.get('/', (req, res) => {
         </style>
       </head>
       <body>
-        <h1>Finandy Telegram Bot</h1>
+        <h1>Finandy Trading Strategy Restart Service</h1>
         
         <div class="status">
-          <p>✅ Bot Server is running!</p>
+          <p>✅ Trading Strategy Restart Server is running!</p>
           <p>Environment: ${process.env.NODE_ENV || 'Development'}</p>
           <p>Admin Chat ID: ${process.env.ADMIN_CHAT_ID || 'Not set'}</p>
         </div>
@@ -456,6 +492,22 @@ app.get('/', (req, res) => {
           <p>Your bot needs a valid admin chat ID to function properly. <a href="/help/chat-id">Learn how to set it up</a>.</p>
         </div>
         ` : ''}
+        
+        <div class="section">
+          <h2>How It Works</h2>
+          <div class="card">
+            <h2>Automatic Strategy Restart</h2>
+            <p>This server automatically restarts your trading strategy whenever a message is received in your Telegram bot @finandy156842bot.</p>
+            <p>Each restart sends the following signal to <code>${SIGNAL_URL}</code>:</p>
+            <pre style="background:#f5f5f5; padding:10px; border-radius:5px;">
+{
+  "name": "Replayer",
+  "secret": "${SIGNAL_SECRET}",
+  "side": "buy",
+  "symbol": "DOGEFDUSD"
+}</pre>
+          </div>
+        </div>
         
         <div class="section">
           <h2>Configuration</h2>
@@ -476,8 +528,6 @@ app.get('/', (req, res) => {
             <p>Check different types of logs to troubleshoot issues.</p>
             <a class="button" href="/logs?type=webhook_update">Webhook Updates</a>
             <a class="button" href="/logs?type=telegram_message">Telegram Messages</a>
-            <a class="button" href="/logs?type=channel_post">Channel Posts</a>
-            <a class="button" href="/logs?type=channel_signal_success">Channel Signals</a>
             <a class="button" href="/analyze-webhooks">Analyze Raw Webhooks</a>
           </div>
         </div>
@@ -486,11 +536,8 @@ app.get('/', (req, res) => {
           <h2>Testing Tools</h2>
           <div class="card">
             <h2>Test Functionality</h2>
-            <p>Send test signals and simulate webhook events.</p>
-            <a class="button" href="/test-webhook">Test Webhook Payload</a>
-            <a class="button" href="/test-signal/buy">Test Buy Signal</a>
-            <a class="button" href="/test-signal/sell">Test Sell Signal</a>
-            <a class="button" href="/trigger-signal">Trigger Default Signal</a>
+            <p>Test the restart functionality manually:</p>
+            <a class="button" href="/trigger-signal">Manually Restart Strategy</a>
           </div>
         </div>
         
@@ -498,20 +545,18 @@ app.get('/', (req, res) => {
           <h2>Help</h2>
           <div class="card">
             <h2>Usage Instructions</h2>
-            <p>To get your chat ID:</p>
+            <p>To restart your trading strategy:</p>
             <ol>
               <li>Find the bot on Telegram: <strong>@finandy156842bot</strong></li>
-              <li>Send a message with just "id" or "/id"</li>
+              <li>Send any message to the bot</li>
+              <li>The bot will restart your trading strategy and reply with a confirmation</li>
+            </ol>
+            
+            <p>To get your chat ID:</p>
+            <ol>
+              <li>Send a message with just "id" or "/id" to the bot</li>
               <li>The bot will reply with your chat ID</li>
               <li>Use that ID in the "Set Admin Chat ID" page</li>
-            </ol>
-            <p><a href="/help/chat-id">Detailed instructions for getting your chat ID</a></p>
-            
-            <p>For channel messages:</p>
-            <ol>
-              <li>Add the bot as an admin to your channel</li>
-              <li>Enable message access for the bot</li>
-              <li>Send messages containing "DOGEFDUSD" to trigger processing</li>
             </ol>
           </div>
         </div>
@@ -674,6 +719,80 @@ app.listen(PORT, () => {
   }
 });
 
+// Home page with information about both bots
+app.get('/', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Finandy Message Forwarder</title>
+        <style>
+          body { font-family: sans-serif; margin: 20px; max-width: 800px; margin: 0 auto; padding: 20px; }
+          h1, h2 { color: #333; }
+          .bot-details { background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+          .actions { margin-top: 30px; }
+          .button {
+            display: inline-block;
+            background: #4285f4;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            text-decoration: none;
+            margin-right: 10px;
+            margin-bottom: 10px;
+          }
+          .button:hover { background: #3367d6; }
+          .status { margin-top: 30px; padding: 15px; border-radius: 5px; }
+          .status.ok { background: #e8f5e9; color: #2e7d32; }
+          .status.warning { background: #fff3e0; color: #ef6c00; }
+          pre { background: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        </style>
+      </head>
+      <body>
+        <h1>Finandy Message Forwarder</h1>
+        <p>This application forwards messages between Telegram bots.</p>
+        
+        <h2>Source Bot</h2>
+        <div class="bot-details">
+          <p><strong>Username:</strong> @finandy156842bot</p>
+          <p><strong>Token:</strong> <code>${TELEGRAM_BOT_TOKEN}</code></p>
+          <p>This is the source bot that receives original messages.</p>
+        </div>
+        
+        <h2>Replayer Bot</h2>
+        <div class="bot-details">
+          <p><strong>Username:</strong> @Finandyreplayer_bot</p>
+          <p><strong>Token:</strong> <code>${REPLAYER_BOT_TOKEN}</code></p>
+          <p>This is the destination bot that forwards messages to a target chat.</p>
+        </div>
+        
+        <div class="status ${process.env.REPLAYER_TARGET_CHAT_ID ? 'ok' : 'warning'}">
+          <h3>Configuration Status:</h3>
+          <p><strong>Replayer Target Chat ID:</strong> ${process.env.REPLAYER_TARGET_CHAT_ID || 'Not set'}</p>
+          <p><strong>Admin Chat ID:</strong> ${process.env.ADMIN_CHAT_ID || 'Not set'}</p>
+          ${!process.env.REPLAYER_TARGET_CHAT_ID ? 
+            '<p><strong>Warning:</strong> Replayer target chat ID is not configured. Messages cannot be forwarded.</p>' : 
+            ''}
+        </div>
+        
+        <div class="actions">
+          <h3>Actions:</h3>
+          <a class="button" href="/set-replayer-target">Set Replayer Target</a>
+          <a class="button" href="/set-admin-chat">Set Admin Chat</a>
+          <a class="button" href="/test-webhook">Test Webhooks</a>
+          <a class="button" href="/analyze-webhooks">Analyze Webhooks</a>
+          <a class="button" href="/logs?type=webhook_update">View Logs</a>
+          <a class="button" href="/trigger-signal">Trigger Test Signal</a>
+        </div>
+        
+        <h2>Environment</h2>
+        <p><strong>Mode:</strong> ${isProduction ? 'Production (Webhook)' : 'Development (Polling)'}</p>
+        <p><strong>Node Version:</strong> ${process.version}</p>
+        <p><strong>Server Port:</strong> ${PORT}</p>
+      </body>
+    </html>
+  `);
+});
+
 // Add a test endpoint that can be used to verify the server is reachable
 app.get('/test', (req, res) => {
   console.log(`[${new Date().toISOString()}] Test endpoint accessed`);
@@ -754,6 +873,35 @@ async function processChannelPost(post) {
       text,
       originalPost: post
     });
+    
+    // Forward the channel post to the replayer bot
+    try {
+      // Target chat ID for the replayer bot (can be configured via environment variable)
+      const replayerTargetChatId = process.env.REPLAYER_TARGET_CHAT_ID || '-1001234567890'; // Set this to a real channel or group ID
+      
+      // Forward as a new message
+      if (post.text) {
+        await replayerBot.sendMessage(replayerTargetChatId, post.text);
+        console.log(`Channel post forwarded to replayer bot: ${post.text}`);
+      } else if (post.caption) {
+        // If it's a media message with caption
+        if (post.photo) {
+          // Get the largest photo (last in array)
+          const photo = post.photo[post.photo.length - 1];
+          await replayerBot.sendPhoto(replayerTargetChatId, photo.file_id, { caption: post.caption });
+        } else if (post.document) {
+          await replayerBot.sendDocument(replayerTargetChatId, post.document.file_id, { caption: post.caption });
+        } else if (post.video) {
+          await replayerBot.sendVideo(replayerTargetChatId, post.video.file_id, { caption: post.caption });
+        } else {
+          // If we can't determine the media type, just forward the text
+          await replayerBot.sendMessage(replayerTargetChatId, post.caption);
+        }
+        console.log(`Media channel post forwarded to replayer bot with caption: ${post.caption}`);
+      }
+    } catch (forwardError) {
+      console.error('Error forwarding channel post to replayer bot:', forwardError);
+    }
     
     // Check if this post contains trading signal info
     if (text.includes('DOGEFDUSD')) {
@@ -1223,6 +1371,18 @@ async function processFinandyData(formattedMessage, originalData) {
     // Check if this is a trading signal message - look for key terms
     const messageText = formattedMessage.text || '';
     
+    // Forward the Finandy data to the replayer bot
+    try {
+      // Target chat ID for the replayer bot (can be configured via environment variable)
+      const replayerTargetChatId = process.env.REPLAYER_TARGET_CHAT_ID || '-1001234567890'; // Set this to a real channel or group ID
+      
+      // Forward as a new message
+      await replayerBot.sendMessage(replayerTargetChatId, messageText);
+      console.log(`Finandy data forwarded to replayer bot: ${messageText}`);
+    } catch (forwardError) {
+      console.error('Error forwarding Finandy data to replayer bot:', forwardError);
+    }
+    
     if (messageText.includes('DOGEFDUSD')) {
       console.log('Detected incoming Finandy trading signal for DOGEFDUSD');
       
@@ -1552,4 +1712,104 @@ Use this ID in your bot configuration.
       </body>
     </html>
   `);
+});
+
+// Add an endpoint to set the replayer target chat ID
+app.get('/set-replayer-target', (req, res) => {
+  try {
+    const chatId = req.query.id;
+    
+    if (!chatId) {
+      return res.send(`
+        <html>
+          <head>
+            <title>Set Replayer Target Chat ID</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
+              .form { margin: 20px 0; }
+              input, button { padding: 8px; margin-right: 10px; }
+              .warning { color: #f57c00; background: #fff3e0; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
+            </style>
+          </head>
+          <body>
+            <h1>Set Replayer Target Chat ID</h1>
+            <p>The replayer target chat ID is where the replayer bot will forward messages.</p>
+            <p>Current Replayer Target Chat ID: <pre>${process.env.REPLAYER_TARGET_CHAT_ID || 'Not set'}</pre></p>
+            
+            <div class="warning">
+              <strong>Important:</strong> This should be a channel/group chat ID where the replayer bot is an admin.
+            </div>
+            
+            <div class="form">
+              <form action="/set-replayer-target" method="get">
+                <input type="text" name="id" placeholder="Enter chat ID (e.g., -1001234567890)" size="30">
+                <button type="submit">Set Replayer Target Chat ID</button>
+              </form>
+            </div>
+            
+            <p>To find a chat ID, add the replayer bot to a channel/group and send a message with "id" or "/id".</p>
+            <p>Group/channel IDs typically start with a negative number.</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    // Store the chat ID in memory (not persistent across restarts)
+    process.env.REPLAYER_TARGET_CHAT_ID = chatId;
+    
+    // Send a test message to this chat
+    replayerBot.sendMessage(chatId, `This chat has been set as the replayer target (ID: ${chatId})`).then(
+      () => {
+        res.send(`
+          <html>
+            <head>
+              <title>Replayer Target Chat ID Set</title>
+              <style>
+                body { font-family: sans-serif; margin: 20px; }
+                .success { color: #4caf50; background: #e8f5e9; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+              </style>
+            </head>
+            <body>
+              <h1>Replayer Target Chat ID Set</h1>
+              <div class="success">
+                <strong>Success!</strong> Replayer target chat ID set to ${chatId}.
+                A test message has been sent to this chat.
+              </div>
+              <p><a href="/set-replayer-target">← Back to settings</a></p>
+            </body>
+          </html>
+        `);
+      },
+      (error) => {
+        res.status(500).send(`
+          <html>
+            <head>
+              <title>Error Setting Replayer Target Chat ID</title>
+              <style>
+                body { font-family: sans-serif; margin: 20px; }
+                .error { color: #f44336; background: #ffebee; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+              </style>
+            </head>
+            <body>
+              <h1>Error Setting Replayer Target Chat ID</h1>
+              <div class="error">
+                <strong>Error!</strong> Failed to send test message to chat ID ${chatId}.<br>
+                Error: ${error.message}
+              </div>
+              <p>Make sure:</p>
+              <ul>
+                <li>The replayer bot is a member of the target chat</li>
+                <li>The replayer bot has permission to send messages</li>
+                <li>The chat ID is correct</li>
+              </ul>
+              <p><a href="/set-replayer-target">← Try again</a></p>
+            </body>
+          </html>
+        `);
+      }
+    );
+  } catch (error) {
+    res.status(500).send(`Error setting replayer target chat ID: ${error.message}`);
+  }
 }); 
