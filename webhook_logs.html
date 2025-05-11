@@ -1,0 +1,56 @@
+
+        <html>
+          <head>
+            <title>Bot Logs</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow: auto; }
+              .controls { margin-bottom: 20px; }
+              select, input, button { padding: 8px; margin-right: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>Telegram Bot Logs</h1>
+            <div class="controls">
+              <form action="/logs" method="get">
+                <select name="type">
+                  <option value="webhook_update" selected>Webhook Updates</option>
+                  <option value="telegram_message" >Telegram Messages</option>
+                  <option value="webhook_error" >Webhook Errors</option>
+                  <option value="finandy_success" >Finandy Success</option>
+                  <option value="finandy_error" >Finandy Error</option>
+                  <option value="raw_webhook" >Raw Webhook</option>
+                </select>
+                <input type="date" name="date" value="2025-05-11">
+                <button type="submit">View Logs</button>
+              </form>
+            </div>
+            <h2>1 Logs Found</h2>
+            <pre>[
+  {
+    "timestamp": "2025-05-11T16:35:52.327Z",
+    "type": "webhook_update",
+    "data": {
+      "update_id": 123456789,
+      "message": {
+        "message_id": 123,
+        "from": {
+          "id": 12345678,
+          "first_name": "Test",
+          "username": "testuser"
+        },
+        "chat": {
+          "id": 12345678,
+          "first_name": "Test",
+          "username": "testuser",
+          "type": "private"
+        },
+        "date": 1612345678,
+        "text": "🥳 DOGEFDUSD spot 610399\n        LONG position is closed\n        $0.05 #CLOSED"
+      }
+    }
+  }
+]</pre>
+          </body>
+        </html>
+      

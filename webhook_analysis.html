@@ -1,0 +1,77 @@
+
+        <html>
+          <head>
+            <title>Webhook Analysis</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow: auto; }
+              .controls { margin-bottom: 20px; }
+              select, input, button { padding: 8px; margin-right: 10px; }
+              .webhook-item { border: 1px solid #ddd; margin-bottom: 20px; padding: 15px; border-radius: 5px; }
+              .webhook-headers, .webhook-body { margin-top: 10px; }
+              .timestamp { font-weight: bold; color: #007bff; }
+            </style>
+          </head>
+          <body>
+            <h1>Webhook Analysis</h1>
+            <div class="controls">
+              <form action="/analyze-webhooks" method="get">
+                <input type="date" name="date" value="2025-05-11">
+                <button type="submit">View Webhooks</button>
+              </form>
+            </div>
+            <h2>1 Webhooks Found</h2>
+            <div id="webhooks">
+              
+                <div class="webhook-item">
+                  <div class="timestamp">Webhook #1 - 2025-05-11T16:35:52.326Z</div>
+                  <div class="webhook-headers">
+                    <h3>Headers</h3>
+                    <pre>{
+  "host": "raplayerfinandy.onrender.com",
+  "user-agent": "curl/8.7.1",
+  "content-length": "333",
+  "accept": "*/*",
+  "accept-encoding": "gzip, br",
+  "cdn-loop": "cloudflare; loops=1",
+  "cf-connecting-ip": "94.43.252.28",
+  "cf-ipcountry": "GE",
+  "cf-ray": "93e3178b0e412dcf-SEA",
+  "cf-visitor": "{\"scheme\":\"https\"}",
+  "content-type": "application/json",
+  "render-proxy-ttl": "4",
+  "rndr-id": "9442960f-dec1-4176",
+  "true-client-ip": "94.43.252.28",
+  "x-forwarded-for": "94.43.252.28, 108.162.245.48, 10.223.64.76",
+  "x-forwarded-proto": "https",
+  "x-request-start": "1746981352310327"
+}</pre>
+                  </div>
+                  <div class="webhook-body">
+                    <h3>Body</h3>
+                    <pre>{
+  "update_id": 123456789,
+  "message": {
+    "message_id": 123,
+    "from": {
+      "id": 12345678,
+      "first_name": "Test",
+      "username": "testuser"
+    },
+    "chat": {
+      "id": 12345678,
+      "first_name": "Test",
+      "username": "testuser",
+      "type": "private"
+    },
+    "date": 1612345678,
+    "text": "🥳 DOGEFDUSD spot 610399\n        LONG position is closed\n        $0.05 #CLOSED"
+  }
+}</pre>
+                  </div>
+                </div>
+              
+            </div>
+          </body>
+        </html>
+      

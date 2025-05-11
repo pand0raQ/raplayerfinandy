@@ -645,6 +645,14 @@ async function processChannelPost(post) {
     
     console.log(`Channel post from "${channelTitle}" (${channelId}): "${text}"`);
     
+    // Log this specifically for diagnostics
+    logToFile('channel_post', {
+      channelId,
+      channelTitle,
+      text,
+      originalPost: post
+    });
+    
     // Check if this post contains trading signal info
     if (text.includes('DOGEFDUSD')) {
       console.log('Detected trading signal in channel post:', text);
@@ -657,11 +665,24 @@ async function processChannelPost(post) {
           text.includes('#CLOSED') || 
           text.includes('SHORT')) {
         side = 'sell';
+        console.log('=======================================');
+        console.log('DETECTED SELL SIGNAL FROM CHANNEL POST');
+        console.log('Channel:', channelTitle);
+        console.log('Text:', text);
+        console.log('=======================================');
       }
       
       // Process the trading signal
       await sendSpecificTradingSignal(symbol, side);
       console.log(`Successfully processed channel signal: ${symbol} ${side}`);
+      
+      // Log the success
+      logToFile('channel_signal_success', {
+        channelId,
+        channelTitle,
+        text,
+        signal: { symbol, side }
+      });
       
       // No confirmation message since this is a channel post
     } else {
@@ -669,6 +690,12 @@ async function processChannelPost(post) {
     }
   } catch (error) {
     console.error('Error processing channel post:', error);
+    
+    // Log the error
+    logToFile('channel_post_error', {
+      error: error.message,
+      stack: error.stack
+    });
   }
 }
 
@@ -857,6 +884,9 @@ app.get('/logs', (req, res) => {
                   <option value="finandy_success" ${fileType === 'finandy_success' ? 'selected' : ''}>Finandy Success</option>
                   <option value="finandy_error" ${fileType === 'finandy_error' ? 'selected' : ''}>Finandy Error</option>
                   <option value="raw_webhook" ${fileType === 'raw_webhook' ? 'selected' : ''}>Raw Webhook</option>
+                  <option value="channel_post" ${fileType === 'channel_post' ? 'selected' : ''}>Channel Posts</option>
+                  <option value="channel_signal_success" ${fileType === 'channel_signal_success' ? 'selected' : ''}>Channel Signal Success</option>
+                  <option value="channel_post_error" ${fileType === 'channel_post_error' ? 'selected' : ''}>Channel Post Errors</option>
                 </select>
                 <input type="date" name="date" value="${date}">
                 <button type="submit">View Logs</button>
@@ -889,6 +919,9 @@ app.get('/logs', (req, res) => {
                   <option value="finandy_success">Finandy Success</option>
                   <option value="finandy_error">Finandy Error</option>
                   <option value="raw_webhook">Raw Webhook</option>
+                  <option value="channel_post">Channel Posts</option>
+                  <option value="channel_signal_success">Channel Signal Success</option>
+                  <option value="channel_post_error">Channel Post Errors</option>
                 </select>
                 <input type="date" name="date" value="${date}">
                 <button type="submit">View Logs</button>
