@@ -89,30 +89,96 @@ async function handleIncomingMessage(msg) {
       return;
     }
 
-    // Send trading signal regardless of message content
-    try {
-      await sendTradingSignal();
+    // Check if this is a trading signal message
+    if (messageText.includes('DOGEFDUSD') && (messageText.includes('LONG') || messageText.includes('SHORT'))) {
+      console.log('Detected incoming trading signal message:', messageText);
       
-      // Acknowledge receipt to user
-      await bot.sendMessage(
-        chatId,
-        'Trading strategy signal sent successfully!'
-      );
-    } catch (error) {
-      console.error('Error sending trading signal:', error.message);
+      // Extract data from the signal message
+      const symbol = 'DOGEFDUSD'; // This is already in the message
       
-      // Try to notify the user of the error
+      // Determine if this is a buy or sell signal based on message content
+      let side = 'buy'; // Default
+      if (messageText.includes('SHORT') || messageText.includes('CLOSED')) {
+        side = 'sell';
+      }
+      
+      // Forward this specific trading signal
       try {
+        await sendSpecificTradingSignal(symbol, side);
+        await bot.sendMessage(chatId, 'Trading signal received and forwarded!');
+      } catch (error) {
+        console.error('Error processing incoming trading signal:', error.message);
         await bot.sendMessage(
           chatId,
-          'Sorry, there was an error sending your trading signal. Please try again later.'
+          'Error processing incoming trading signal. Please check server logs.'
         );
-      } catch (sendError) {
-        console.error('Failed to send error message to user:', sendError.message);
+      }
+    } else {
+      // For regular messages (not trading signals), use the default behavior
+      try {
+        await sendTradingSignal();
+        
+        // Acknowledge receipt to user
+        await bot.sendMessage(
+          chatId,
+          'Trading strategy signal sent successfully!'
+        );
+      } catch (error) {
+        console.error('Error sending trading signal:', error.message);
+        
+        // Try to notify the user of the error
+        try {
+          await bot.sendMessage(
+            chatId,
+            'Sorry, there was an error sending your trading signal. Please try again later.'
+          );
+        } catch (sendError) {
+          console.error('Failed to send error message to user:', sendError.message);
+        }
       }
     }
   } catch (error) {
     console.error('Unexpected error in handleIncomingMessage:', error);
+  }
+}
+
+// Function to send a specific trading signal
+async function sendSpecificTradingSignal(symbol, side) {
+  try {
+    const signalData = {
+      name: "Replayer",
+      secret: SIGNAL_SECRET,
+      symbol: symbol,
+      side: side
+    };
+
+    console.log('Sending specific signal:', JSON.stringify(signalData));
+    
+    const response = await axios.post(SIGNAL_URL, signalData, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+    
+    console.log('Specific signal sent successfully:');
+    console.log(`Status: ${response.status}`);
+    console.log(`Response data: ${JSON.stringify(response.data)}`);
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error sending specific trading signal:');
+    
+    if (error.response) {
+      console.error(`Status: ${error.response.status}`);
+      console.error(`Response data: ${JSON.stringify(error.response.data)}`);
+    } else if (error.request) {
+      console.error('No response received from server');
+    } else {
+      console.error('Error setting up request:', error.message);
+    }
+    
+    throw error;
   }
 }
 
