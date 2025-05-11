@@ -73,15 +73,71 @@ if (isProduction) {
   });
 }
 
+// Webhook endpoint to receive messages from Telegram
+app.post('/webhook', async (req, res) => {
+  try {
+    const update = req.body;
+    
+    // Add super detailed logging of the entire update object
+    console.log('DETAILED WEBHOOK UPDATE:', JSON.stringify(update, null, 2));
+    console.log('UPDATE TYPE:', typeof update);
+    console.log('HAS MESSAGE:', !!update?.message);
+    console.log('HAS CHANNEL_POST:', !!update?.channel_post);
+    
+    // Enhanced handling for different types of updates
+    let messageToProcess = null;
+    
+    if (update?.message) {
+      console.log('Processing as regular message');
+      messageToProcess = update.message;
+    } else if (update?.channel_post) {
+      console.log('Processing as channel post');
+      messageToProcess = update.channel_post;
+    } else if (update?.edited_message) {
+      console.log('Processing as edited message');
+      messageToProcess = update.edited_message;
+    } else if (update?.edited_channel_post) {
+      console.log('Processing as edited channel post');
+      messageToProcess = update.edited_channel_post;
+    }
+    
+    // Process the message if we found a valid one
+    if (messageToProcess) {
+      console.log('Message to process:', JSON.stringify(messageToProcess));
+      await handleIncomingMessage(messageToProcess);
+    } else {
+      console.log('No valid message found in update:', JSON.stringify(update));
+    }
+    
+    // Always respond with 200 OK to Telegram
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('Error handling webhook:', error);
+    
+    // Always respond with 200 OK to Telegram even if there's an error
+    // This is to prevent Telegram from disabling your webhook
+    res.sendStatus(200);
+    
+    // Log the full error for debugging
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', JSON.stringify(error.response.data));
+    }
+  }
+});
+
 // Function to handle incoming messages
 async function handleIncomingMessage(msg) {
   try {
+    // Log the entire message object for debugging
+    console.log('HANDLING MESSAGE OBJECT:', JSON.stringify(msg, null, 2));
+    
     // Safe access of message properties using optional chaining
-    const messageText = msg?.text || 'No text';
+    const messageText = msg?.text || msg?.caption || 'No text';
     const userId = msg?.from?.id || 'Unknown';
     const chatId = msg?.chat?.id;
     
-    console.log(`Processing message: "${messageText}" from user ID: ${userId}`);
+    console.log(`Processing message: "${messageText}" from user ID: ${userId}, chat ID: ${chatId}`);
     
     // Check if chatId is valid
     if (!chatId) {
@@ -93,8 +149,7 @@ async function handleIncomingMessage(msg) {
     await new Promise(resolve => setTimeout(resolve, 2000));
     console.log('Continuing after 2-second timeout');
 
-    // Check if this is a trading signal message
-    // More flexible detection for different message formats
+    // Check if this is a trading signal message - check both text and caption fields
     if (messageText.includes('DOGEFDUSD')) {
       console.log('Detected incoming trading signal message:', messageText);
       
@@ -113,7 +168,8 @@ async function handleIncomingMessage(msg) {
       // Forward this specific trading signal
       try {
         await sendSpecificTradingSignal(symbol, side);
-        // No response message
+        // Log successful processing
+        console.log(`Successfully processed signal: ${symbol} ${side}`);
       } catch (error) {
         console.error('Error processing incoming trading signal:', error.message);
         await bot.sendMessage(
@@ -125,7 +181,7 @@ async function handleIncomingMessage(msg) {
       // For regular messages (not trading signals), use the default behavior
       try {
         await sendTradingSignal();
-        // No "Trading strategy signal sent successfully!" message
+        console.log('Default trading signal sent successfully');
       } catch (error) {
         console.error('Error sending trading signal:', error.message);
         
@@ -184,38 +240,6 @@ async function sendSpecificTradingSignal(symbol, side) {
     throw error;
   }
 }
-
-// Webhook endpoint to receive messages from Telegram
-app.post('/webhook', async (req, res) => {
-  try {
-    const update = req.body;
-    console.log('Received update from Telegram webhook:', JSON.stringify(update));
-
-    // Check if it's a valid Telegram update
-    if (!update || !update.message) {
-      console.log('Received invalid update:', JSON.stringify(update));
-      return res.sendStatus(400); // Bad request
-    }
-
-    // Process the message
-    await handleIncomingMessage(update.message);
-    
-    // Always respond with 200 OK to Telegram
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('Error handling webhook:', error);
-    
-    // Always respond with 200 OK to Telegram even if there's an error
-    // This is to prevent Telegram from disabling your webhook
-    res.sendStatus(200);
-    
-    // Log the full error for debugging
-    if (error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', JSON.stringify(error.response.data));
-    }
-  }
-});
 
 // Function to send trading signal
 async function sendTradingSignal() {
