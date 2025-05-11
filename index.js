@@ -76,23 +76,43 @@ if (isProduction) {
 // Function to handle incoming messages
 async function handleIncomingMessage(msg) {
   try {
-    console.log('Processing message:', msg.text, 'from user ID:', msg.from.id);
+    // Safe access of message properties using optional chaining
+    const messageText = msg?.text || 'No text';
+    const userId = msg?.from?.id || 'Unknown';
+    const chatId = msg?.chat?.id;
     
-    // Send trading signal
-    await sendTradingSignal();
+    console.log(`Processing message: "${messageText}" from user ID: ${userId}`);
     
-    // Acknowledge receipt to user
-    await bot.sendMessage(
-      msg.chat.id,
-      'Trading strategy signal sent successfully!'
-    );
+    // Check if chatId is valid
+    if (!chatId) {
+      console.error('Invalid chat ID in message:', JSON.stringify(msg));
+      return;
+    }
+
+    // Send trading signal regardless of message content
+    try {
+      await sendTradingSignal();
+      
+      // Acknowledge receipt to user
+      await bot.sendMessage(
+        chatId,
+        'Trading strategy signal sent successfully!'
+      );
+    } catch (error) {
+      console.error('Error sending trading signal:', error.message);
+      
+      // Try to notify the user of the error
+      try {
+        await bot.sendMessage(
+          chatId,
+          'Sorry, there was an error sending your trading signal. Please try again later.'
+        );
+      } catch (sendError) {
+        console.error('Failed to send error message to user:', sendError.message);
+      }
+    }
   } catch (error) {
-    console.error('Error handling message:', error);
-    // Notify the user of the error
-    await bot.sendMessage(
-      msg.chat.id,
-      'Sorry, there was an error sending your trading signal. Please try again later.'
-    );
+    console.error('Unexpected error in handleIncomingMessage:', error);
   }
 }
 
@@ -102,15 +122,29 @@ app.post('/webhook', async (req, res) => {
     const update = req.body;
     console.log('Received update from Telegram webhook:', JSON.stringify(update));
 
-    // Check if it's a message
-    if (update.message) {
-      await handleIncomingMessage(update.message);
+    // Check if it's a valid Telegram update
+    if (!update || !update.message) {
+      console.log('Received invalid update:', JSON.stringify(update));
+      return res.sendStatus(400); // Bad request
     }
 
+    // Process the message
+    await handleIncomingMessage(update.message);
+    
+    // Always respond with 200 OK to Telegram
     res.sendStatus(200);
   } catch (error) {
     console.error('Error handling webhook:', error);
-    res.sendStatus(500);
+    
+    // Always respond with 200 OK to Telegram even if there's an error
+    // This is to prevent Telegram from disabling your webhook
+    res.sendStatus(200);
+    
+    // Log the full error for debugging
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', JSON.stringify(error.response.data));
+    }
   }
 });
 
@@ -120,17 +154,47 @@ async function sendTradingSignal() {
     const signalData = {
       name: "Replayer",
       secret: SIGNAL_SECRET,
-      side: "buy",
-      symbol: "DOGEFDUSD"
+      symbol: "DOGEFDUSD",
+      side: "buy"
     };
 
-    console.log('Sending signal:', signalData);
+    console.log('Sending signal:', JSON.stringify(signalData));
     
-    const response = await axios.post(SIGNAL_URL, signalData);
-    console.log('Signal sent successfully:', response.data);
+    // Log more request details for debugging
+    console.log(`Sending POST request to: ${SIGNAL_URL}`);
+    console.log(`With headers: ${JSON.stringify({ 'Content-Type': 'application/json' })}`);
+    
+    const response = await axios.post(SIGNAL_URL, signalData, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      // Add timeout and more detailed error handling
+      timeout: 10000
+    });
+    
+    console.log('Signal sent successfully:');
+    console.log(`Status: ${response.status}`);
+    console.log(`Response data: ${JSON.stringify(response.data)}`);
+    
     return response.data;
   } catch (error) {
-    console.error('Error sending trading signal:', error);
+    console.error('Error sending trading signal:');
+    
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.error(`Status: ${error.response.status}`);
+      console.error(`Response data: ${JSON.stringify(error.response.data)}`);
+      console.error(`Response headers: ${JSON.stringify(error.response.headers)}`);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('No response received from server');
+      console.error(error.request);
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      console.error('Error setting up request:', error.message);
+    }
+    
     throw error;
   }
 }
