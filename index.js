@@ -21,7 +21,7 @@ let bot;
 if (isProduction) {
   // In production, use webhook mode
   bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
-  const webhookURL = `https://${process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || 'your-app-name.onrender.com'}/webhook`;
+  const webhookURL = `https://${process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || 'raplayerfinandy.onrender.com'}/webhook`;
   console.log(`Setting webhook to: ${webhookURL}`);
   bot.setWebHook(webhookURL).then(
     () => console.log(`Webhook set to ${webhookURL}`),
