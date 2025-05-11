@@ -93,7 +93,8 @@ function logToFile(type, data) {
       type,
       data
     };
-    fs.appendFileSync(logFileName, JSON.stringify(logEntry, null, 2) + ',\n');
+    // Use a single-line JSON format with a clear separator that won't appear in the JSON content
+    fs.appendFileSync(logFileName, JSON.stringify(logEntry) + '\n---LOG_SEPARATOR---\n');
     console.log(`Logged ${type} to file: ${logFileName}`);
   } catch (error) {
     console.error('Error logging to file:', error);
@@ -806,9 +807,9 @@ app.get('/logs', (req, res) => {
       // Read the log file
       const logData = fs.readFileSync(logFileName, 'utf8');
       
-      // Format as readable JSON
+      // Format as readable JSON using our custom separator
       const logs = logData
-        .split(',\n')
+        .split('\n---LOG_SEPARATOR---\n')
         .filter(log => log.trim()) // Filter out empty lines
         .map(log => {
           try {
@@ -838,6 +839,8 @@ app.get('/logs', (req, res) => {
                   <option value="webhook_update" ${fileType === 'webhook_update' ? 'selected' : ''}>Webhook Updates</option>
                   <option value="telegram_message" ${fileType === 'telegram_message' ? 'selected' : ''}>Telegram Messages</option>
                   <option value="webhook_error" ${fileType === 'webhook_error' ? 'selected' : ''}>Webhook Errors</option>
+                  <option value="finandy_success" ${fileType === 'finandy_success' ? 'selected' : ''}>Finandy Success</option>
+                  <option value="finandy_error" ${fileType === 'finandy_error' ? 'selected' : ''}>Finandy Error</option>
                 </select>
                 <input type="date" name="date" value="${date}">
                 <button type="submit">View Logs</button>
@@ -867,6 +870,8 @@ app.get('/logs', (req, res) => {
                   <option value="webhook_update">Webhook Updates</option>
                   <option value="telegram_message">Telegram Messages</option>
                   <option value="webhook_error">Webhook Errors</option>
+                  <option value="finandy_success">Finandy Success</option>
+                  <option value="finandy_error">Finandy Error</option>
                 </select>
                 <input type="date" name="date" value="${date}">
                 <button type="submit">View Logs</button>
@@ -892,7 +897,7 @@ app.get('/api/logs', (req, res) => {
     if (fs.existsSync(logFileName)) {
       const logData = fs.readFileSync(logFileName, 'utf8');
       const logs = logData
-        .split(',\n')
+        .split('\n---LOG_SEPARATOR---\n')
         .filter(log => log.trim())
         .map(log => {
           try {
