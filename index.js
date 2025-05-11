@@ -438,6 +438,7 @@ app.get('/', (req, res) => {
                     text-decoration: none; border-radius: 4px; margin-right: 10px; margin-bottom: 10px; }
           .status { padding: 10px; background: #e8f5e9; border-radius: 4px; margin-bottom: 20px; }
           .section { margin-bottom: 30px; }
+          .warning { padding: 10px; background: #fff3e0; color: #e65100; border-radius: 4px; margin-bottom: 20px; }
         </style>
       </head>
       <body>
@@ -449,6 +450,13 @@ app.get('/', (req, res) => {
           <p>Admin Chat ID: ${process.env.ADMIN_CHAT_ID || 'Not set'}</p>
         </div>
         
+        ${!process.env.ADMIN_CHAT_ID ? `
+        <div class="warning">
+          <strong>⚠️ Admin Chat ID Not Set!</strong>
+          <p>Your bot needs a valid admin chat ID to function properly. <a href="/help/chat-id">Learn how to set it up</a>.</p>
+        </div>
+        ` : ''}
+        
         <div class="section">
           <h2>Configuration</h2>
           <div class="card">
@@ -457,6 +465,7 @@ app.get('/', (req, res) => {
             <a class="button" href="/set-admin-chat">Set Admin Chat ID</a>
             <a class="button" href="/webhook-status">Check Webhook Status</a>
             <a class="button" href="/test-chat/${process.env.ADMIN_CHAT_ID || '0'}">Test Admin Chat</a>
+            <a class="button" href="/help/chat-id">How to Get Chat ID</a>
           </div>
         </div>
         
@@ -496,6 +505,8 @@ app.get('/', (req, res) => {
               <li>The bot will reply with your chat ID</li>
               <li>Use that ID in the "Set Admin Chat ID" page</li>
             </ol>
+            <p><a href="/help/chat-id">Detailed instructions for getting your chat ID</a></p>
+            
             <p>For channel messages:</p>
             <ol>
               <li>Add the bot as an admin to your channel</li>
@@ -1369,12 +1380,18 @@ app.get('/set-admin-chat', (req, res) => {
               pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
               .form { margin: 20px 0; }
               input, button { padding: 8px; margin-right: 10px; }
+              .warning { color: #f57c00; background: #fff3e0; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
             </style>
           </head>
           <body>
             <h1>Set Admin Chat ID</h1>
             <p>The admin chat ID is used for notifications and as a fallback for Finandy messages.</p>
             <p>Current Admin Chat ID: <pre>${process.env.ADMIN_CHAT_ID || 'Not set'}</pre></p>
+            
+            <div class="warning">
+              <strong>Important:</strong> You must provide your personal Telegram account ID, not a bot ID. 
+              Bots cannot send messages to other bots.
+            </div>
             
             <div class="form">
               <form action="/set-admin-chat" method="get">
@@ -1384,6 +1401,8 @@ app.get('/set-admin-chat', (req, res) => {
             </div>
             
             <p>To find your chat ID, send a message with "id" or "/id" to your bot.</p>
+            <p>Make sure you're messaging the bot from your personal Telegram account, not from another bot.</p>
+            <p><a href="/help/chat-id">Need help? View detailed instructions</a></p>
           </body>
         </html>
       `);
@@ -1415,6 +1434,9 @@ app.get('/set-admin-chat', (req, res) => {
         `);
       },
       (error) => {
+        // Special handling for the bot-to-bot message error
+        const isBotToBot = error.message && error.message.includes("bots can't send messages to bots");
+        
         res.status(400).send(`
           <html>
             <head>
@@ -1423,11 +1445,28 @@ app.get('/set-admin-chat', (req, res) => {
                 body { font-family: sans-serif; margin: 20px; }
                 pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
                 .error { color: red; font-weight: bold; }
+                .info { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }
               </style>
             </head>
             <body>
               <h1>Error Setting Admin Chat</h1>
               <p class="error">Failed to send test message to the chat ID.</p>
+              
+              ${isBotToBot ? `
+              <div class="info">
+                <h2>Bot-to-Bot Communication Error</h2>
+                <p>The ID you provided appears to be for another bot. Telegram doesn't allow bots to send messages to other bots.</p>
+                <p>Please use your personal Telegram account ID instead.</p>
+                <p>To get your personal chat ID:</p>
+                <ol>
+                  <li>Open Telegram</li>
+                  <li>Find and message @finandy156842bot</li>
+                  <li>Send the message "id" or "/id"</li>
+                  <li>The bot will respond with your personal chat ID</li>
+                </ol>
+              </div>
+              ` : ''}
+              
               <p>This likely means the chat ID is invalid or the bot doesn't have access to it.</p>
               <p>Error: <pre>${error.message}</pre></p>
               <p><a href="/set-admin-chat">Try again</a></p>
@@ -1439,4 +1478,78 @@ app.get('/set-admin-chat', (req, res) => {
   } catch (error) {
     res.status(500).send(`Error setting admin chat: ${error.message}`);
   }
+});
+
+// Add a help page for getting chat ID
+app.get('/help/chat-id', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>How to Get Your Chat ID</title>
+        <style>
+          body { font-family: sans-serif; margin: 20px; max-width: 800px; margin: 0 auto; padding: 20px; }
+          h1, h2 { color: #333; }
+          .step { border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 20px; }
+          .step h3 { margin-top: 0; color: #444; }
+          img { max-width: 100%; border: 1px solid #ddd; margin: 10px 0; }
+          .note { background: #e8f5e9; padding: 10px; border-radius: 4px; margin: 20px 0; }
+          .warning { background: #ffebee; padding: 10px; border-radius: 4px; margin: 20px 0; }
+          pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
+          a.button { display: inline-block; background: #4CAF50; color: white; padding: 10px 15px; 
+                    text-decoration: none; border-radius: 4px; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>How to Get Your Telegram Chat ID</h1>
+        
+        <div class="note">
+          <strong>Note:</strong> You must use your personal Telegram account ID, not a bot ID.
+          Bots cannot send messages to other bots.
+        </div>
+        
+        <div class="step">
+          <h3>Step 1: Open Telegram</h3>
+          <p>Make sure you're using your personal Telegram account, not another bot.</p>
+        </div>
+        
+        <div class="step">
+          <h3>Step 2: Find the Bot</h3>
+          <p>Search for <strong>@finandy156842bot</strong> in Telegram and start a chat.</p>
+        </div>
+        
+        <div class="step">
+          <h3>Step 3: Send ID Command</h3>
+          <p>Send a message with just <code>id</code> or <code>/id</code> in the chat.</p>
+        </div>
+        
+        <div class="step">
+          <h3>Step 4: Get Your ID</h3>
+          <p>The bot will respond with your chat ID. It will look something like this:</p>
+          <pre>
+Your chat ID is: 123456789
+Your user ID is: 123456789
+
+Use this ID in your bot configuration.
+          </pre>
+        </div>
+        
+        <div class="step">
+          <h3>Step 5: Set as Admin Chat</h3>
+          <p>Use this ID in the "Set Admin Chat ID" page.</p>
+          <a class="button" href="/set-admin-chat">Go to Set Admin Chat ID</a>
+        </div>
+        
+        <div class="warning">
+          <strong>Common Mistakes:</strong>
+          <ul>
+            <li>Using another bot's ID instead of your personal account</li>
+            <li>Using a channel ID instead of your personal chat ID</li>
+            <li>Typing the ID incorrectly (it should be a number)</li>
+          </ul>
+        </div>
+        
+        <p><a href="/">Return to Home</a></p>
+      </body>
+    </html>
+  `);
 }); 
