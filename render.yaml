@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: trading-bot-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TELEGRAM_BOT_TOKEN
+        value: 6920059388:AAF4NxnG6hGc2B0CkWSxceOXLAROJF9UI4M
+      - key: SIGNAL_URL
+        value: https://hook.finandy.com/yO3KJnXGQbpKnkbLrlUK
+      - key: SIGNAL_SECRET
+        value: e2kici7dcc 
