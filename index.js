@@ -8,6 +8,8 @@ const PORT = process.env.PORT || 3000;
 const TELEGRAM_BOT_TOKEN = '6920059388:AAF4NxnG6hGc2B0CkWSxceOXLAROJF9UI4M';
 const SIGNAL_URL = 'https://hook.finandy.com/yO3KJnXGQbpKnkbLrlUK';
 const SIGNAL_SECRET = 'e2kici7dcc';
+// Logging service URL - this will receive all message data for debugging
+const DEBUG_LOG_URL = 'https://webhook.site/0e6d09d0-4c6e-4a60-88bb-e2686b1e8d09';
 
 // Determine environment
 const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RENDER_EXTERNAL_URL;
@@ -84,6 +86,9 @@ app.post('/webhook', async (req, res) => {
     console.log('HAS MESSAGE:', !!update?.message);
     console.log('HAS CHANNEL_POST:', !!update?.channel_post);
     
+    // Log this update to our external debug service
+    await logToDebugService('webhook_update', update);
+    
     // Enhanced handling for different types of updates
     let messageToProcess = null;
     let sourceType = '';
@@ -110,6 +115,12 @@ app.post('/webhook', async (req, res) => {
     if (messageToProcess) {
       console.log(`Message to process (${sourceType}):`, JSON.stringify(messageToProcess));
       
+      // Log the message we're processing
+      await logToDebugService('telegram_message', {
+        sourceType,
+        messageToProcess
+      });
+      
       // Special handling for channel posts
       if (sourceType === 'channel_post' || sourceType === 'edited_channel_post') {
         await processChannelPost(messageToProcess);
@@ -119,12 +130,24 @@ app.post('/webhook', async (req, res) => {
       }
     } else {
       console.log('No valid message found in update:', JSON.stringify(update));
+      
+      // Log that we couldn't find a valid message
+      await logToDebugService('invalid_update', {
+        reason: 'No valid message found',
+        update
+      });
     }
     
     // Always respond with 200 OK to Telegram
     res.sendStatus(200);
   } catch (error) {
     console.error('Error handling webhook:', error);
+    
+    // Log the error to our debug service
+    await logToDebugService('webhook_error', {
+      message: error.message,
+      stack: error.stack
+    });
     
     // Always respond with 200 OK to Telegram even if there's an error
     // This is to prevent Telegram from disabling your webhook
@@ -582,4 +605,147 @@ async function processChannelPost(post) {
   } catch (error) {
     console.error('Error processing channel post:', error);
   }
-} 
+}
+
+// Helper function to log data to external debug service
+async function logToDebugService(type, data) {
+  try {
+    console.log(`Logging ${type} data to debug service`);
+    
+    // Create payload with timestamp
+    const payload = {
+      type,
+      timestamp: new Date().toISOString(),
+      data
+    };
+    
+    // Send to debug service
+    const response = await axios.post(DEBUG_LOG_URL, payload, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 5000 // 5 second timeout so it doesn't block operations
+    });
+    
+    console.log(`Debug log sent: ${response.status}`);
+    return true;
+  } catch (error) {
+    console.error(`Error logging to debug service: ${error.message}`);
+    return false;
+  }
+}
+
+// Add a chatID test endpoint
+app.get('/test-chat/:chatId', async (req, res) => {
+  try {
+    const chatId = req.params.chatId;
+    console.log(`Testing chat with ID: ${chatId}`);
+    
+    if (!chatId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Chat ID is required'
+      });
+    }
+    
+    // Test sending a message to this chat
+    const result = await bot.sendMessage(chatId, 'Test message from your bot!');
+    
+    // Log the result to our debug service
+    await logToDebugService('test_chat_result', result);
+    
+    res.json({
+      success: true,
+      message: 'Test message sent',
+      result
+    });
+  } catch (error) {
+    console.error('Error testing chat:', error);
+    
+    // Log the error to our debug service
+    await logToDebugService('test_chat_error', {
+      chatId: req.params.chatId,
+      message: error.message,
+      stack: error.stack
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error testing chat',
+      error: error.message
+    });
+  }
+});
+
+// Add a signal test endpoint that will send a signal through the Telegram API
+app.get('/test-signal/:signalType', async (req, res) => {
+  try {
+    const signalType = req.params.signalType || 'buy';
+    console.log(`Testing signal of type: ${signalType}`);
+    
+    // Get webhook info to get the bot's chat ID
+    const webhookInfo = await bot.getWebHookInfo();
+    
+    // Log the webhook info
+    console.log('Current webhook info:', webhookInfo);
+    await logToDebugService('webhook_info', webhookInfo);
+    
+    // Test signal messages
+    const testMessages = {
+      buy: '🚀 DOGEFDUSD spot 604017\n        LONG position is opened\n        $0.06 #OPENED',
+      sell: '🥳 DOGEFDUSD spot 604017\n        LONG position is closed\n        $0.06 #CLOSED'
+    };
+    
+    // Create a test message (self-sent message to the bot)
+    const testMessage = testMessages[signalType] || testMessages.buy;
+    
+    // Log what we're going to do
+    console.log(`Testing with message: ${testMessage}`);
+    await logToDebugService('test_signal', {
+      signalType,
+      testMessage
+    });
+    
+    // Simulate processing this message
+    const simulatedMessage = {
+      message_id: Math.floor(Math.random() * 1000),
+      from: {
+        id: 12345,
+        is_bot: false,
+        first_name: 'Test',
+        last_name: 'User'
+      },
+      chat: {
+        id: 12345,
+        first_name: 'Test',
+        last_name: 'User',
+        type: 'private'
+      },
+      date: Math.floor(Date.now() / 1000),
+      text: testMessage
+    };
+    
+    // Process the simulated message
+    await handleIncomingMessage(simulatedMessage);
+    
+    res.json({
+      success: true,
+      message: 'Test signal processed',
+      signalType,
+      testMessage
+    });
+  } catch (error) {
+    console.error('Error testing signal:', error);
+    
+    // Log the error to our debug service
+    await logToDebugService('test_signal_error', {
+      signalType: req.params.signalType,
+      message: error.message,
+      stack: error.stack
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error testing signal',
+      error: error.message
+    });
+  }
+}); 
