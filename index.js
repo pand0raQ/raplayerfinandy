@@ -89,6 +89,10 @@ async function handleIncomingMessage(msg) {
       return;
     }
 
+    // Add a 2-second timeout before processing the message
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('Continuing after 2-second timeout');
+
     // Check if this is a trading signal message
     // More flexible detection for different message formats
     if (messageText.includes('DOGEFDUSD')) {
@@ -109,7 +113,7 @@ async function handleIncomingMessage(msg) {
       // Forward this specific trading signal
       try {
         await sendSpecificTradingSignal(symbol, side);
-        await bot.sendMessage(chatId, 'Trading signal received and forwarded!');
+        // No response message
       } catch (error) {
         console.error('Error processing incoming trading signal:', error.message);
         await bot.sendMessage(
@@ -121,12 +125,7 @@ async function handleIncomingMessage(msg) {
       // For regular messages (not trading signals), use the default behavior
       try {
         await sendTradingSignal();
-        
-        // Acknowledge receipt to user
-        await bot.sendMessage(
-          chatId,
-          'Trading strategy signal sent successfully!'
-        );
+        // No "Trading strategy signal sent successfully!" message
       } catch (error) {
         console.error('Error sending trading signal:', error.message);
         
