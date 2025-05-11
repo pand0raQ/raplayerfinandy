@@ -104,6 +104,21 @@ function logToFile(type, data) {
 // Webhook endpoint to receive messages from Telegram
 app.post('/webhook', async (req, res) => {
   try {
+    // Log complete raw request information
+    console.log('===========================================');
+    console.log('WEBHOOK REQUEST RECEIVED:', new Date().toISOString());
+    console.log('HEADERS:', JSON.stringify(req.headers, null, 2));
+    console.log('RAW BODY TYPE:', typeof req.body);
+    console.log('RAW BODY CONTENT:', JSON.stringify(req.body, null, 2));
+    console.log('===========================================');
+    
+    // Create a raw webhook log for diagnostics
+    logToFile('raw_webhook', {
+      timestamp: new Date().toISOString(),
+      headers: req.headers,
+      body: req.body
+    });
+
     const update = req.body;
     
     // Add super detailed logging of the entire update object
@@ -841,6 +856,7 @@ app.get('/logs', (req, res) => {
                   <option value="webhook_error" ${fileType === 'webhook_error' ? 'selected' : ''}>Webhook Errors</option>
                   <option value="finandy_success" ${fileType === 'finandy_success' ? 'selected' : ''}>Finandy Success</option>
                   <option value="finandy_error" ${fileType === 'finandy_error' ? 'selected' : ''}>Finandy Error</option>
+                  <option value="raw_webhook" ${fileType === 'raw_webhook' ? 'selected' : ''}>Raw Webhook</option>
                 </select>
                 <input type="date" name="date" value="${date}">
                 <button type="submit">View Logs</button>
@@ -872,6 +888,7 @@ app.get('/logs', (req, res) => {
                   <option value="webhook_error">Webhook Errors</option>
                   <option value="finandy_success">Finandy Success</option>
                   <option value="finandy_error">Finandy Error</option>
+                  <option value="raw_webhook">Raw Webhook</option>
                 </select>
                 <input type="date" name="date" value="${date}">
                 <button type="submit">View Logs</button>
@@ -1117,4 +1134,98 @@ async function processFinandyData(formattedMessage, originalData) {
     console.error('Error in processFinandyData:', error);
     return false;
   }
-} 
+}
+
+// Add an endpoint for analyzing raw webhook data
+app.get('/analyze-webhooks', (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().split('T')[0]; // Default to today
+    const logFileName = path.join(logsDir, `raw_webhook_${date}.log`);
+    
+    if (fs.existsSync(logFileName)) {
+      // Read the log file
+      const logData = fs.readFileSync(logFileName, 'utf8');
+      
+      // Parse the logs
+      const logs = logData
+        .split('\n---LOG_SEPARATOR---\n')
+        .filter(log => log.trim())
+        .map(log => {
+          try {
+            return JSON.parse(log);
+          } catch (e) {
+            return { error: 'Failed to parse log entry', raw: log };
+          }
+        });
+      
+      // Provide detailed analysis UI
+      res.send(`
+        <html>
+          <head>
+            <title>Webhook Analysis</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow: auto; }
+              .controls { margin-bottom: 20px; }
+              select, input, button { padding: 8px; margin-right: 10px; }
+              .webhook-item { border: 1px solid #ddd; margin-bottom: 20px; padding: 15px; border-radius: 5px; }
+              .webhook-headers, .webhook-body { margin-top: 10px; }
+              .timestamp { font-weight: bold; color: #007bff; }
+            </style>
+          </head>
+          <body>
+            <h1>Webhook Analysis</h1>
+            <div class="controls">
+              <form action="/analyze-webhooks" method="get">
+                <input type="date" name="date" value="${date}">
+                <button type="submit">View Webhooks</button>
+              </form>
+            </div>
+            <h2>${logs.length} Webhooks Found</h2>
+            <div id="webhooks">
+              ${logs.map((log, index) => `
+                <div class="webhook-item">
+                  <div class="timestamp">Webhook #${index + 1} - ${log.data?.timestamp || 'Unknown time'}</div>
+                  <div class="webhook-headers">
+                    <h3>Headers</h3>
+                    <pre>${JSON.stringify(log.data?.headers || {}, null, 2)}</pre>
+                  </div>
+                  <div class="webhook-body">
+                    <h3>Body</h3>
+                    <pre>${JSON.stringify(log.data?.body || {}, null, 2)}</pre>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </body>
+        </html>
+      `);
+    } else {
+      res.status(404).send(`
+        <html>
+          <head>
+            <title>Webhook Analysis</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              .controls { margin-bottom: 20px; }
+              select, input, button { padding: 8px; margin-right: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>Webhook Analysis</h1>
+            <div class="controls">
+              <form action="/analyze-webhooks" method="get">
+                <input type="date" name="date" value="${date}">
+                <button type="submit">View Webhooks</button>
+              </form>
+            </div>
+            <h2>No raw webhook logs found for ${date}</h2>
+            <p>Try sending some webhook requests and then check this page again.</p>
+          </body>
+        </html>
+      `);
+    }
+  } catch (error) {
+    res.status(500).send(`Error analyzing webhooks: ${error.message}`);
+  }
+}); 
