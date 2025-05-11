@@ -90,15 +90,19 @@ async function handleIncomingMessage(msg) {
     }
 
     // Check if this is a trading signal message
-    if (messageText.includes('DOGEFDUSD') && (messageText.includes('LONG') || messageText.includes('SHORT'))) {
+    // More flexible detection for different message formats
+    if (messageText.includes('DOGEFDUSD')) {
       console.log('Detected incoming trading signal message:', messageText);
       
-      // Extract data from the signal message
-      const symbol = 'DOGEFDUSD'; // This is already in the message
+      const symbol = 'DOGEFDUSD'; // This is consistent
       
       // Determine if this is a buy or sell signal based on message content
       let side = 'buy'; // Default
-      if (messageText.includes('SHORT') || messageText.includes('CLOSED')) {
+      
+      // Check for various patterns indicating a SELL signal
+      if (messageText.includes('position is closed') || 
+          messageText.includes('#CLOSED') || 
+          messageText.includes('SHORT')) {
         side = 'sell';
       }
       
