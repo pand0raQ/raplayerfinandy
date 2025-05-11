@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
+const fs = require('fs');
+const path = require('path');
 
 // Environment variables
 const PORT = process.env.PORT || 3000;
@@ -75,6 +77,29 @@ if (isProduction) {
   });
 }
 
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir);
+}
+
+// Function to log to file
+function logToFile(type, data) {
+  try {
+    const timestamp = new Date().toISOString();
+    const logFileName = path.join(logsDir, `${type}_${timestamp.split('T')[0]}.log`);
+    const logEntry = {
+      timestamp,
+      type,
+      data
+    };
+    fs.appendFileSync(logFileName, JSON.stringify(logEntry, null, 2) + ',\n');
+    console.log(`Logged ${type} to file: ${logFileName}`);
+  } catch (error) {
+    console.error('Error logging to file:', error);
+  }
+}
+
 // Webhook endpoint to receive messages from Telegram
 app.post('/webhook', async (req, res) => {
   try {
@@ -86,14 +111,33 @@ app.post('/webhook', async (req, res) => {
     console.log('HAS MESSAGE:', !!update?.message);
     console.log('HAS CHANNEL_POST:', !!update?.channel_post);
     
-    // Log this update to our external debug service
-    await logToDebugService('webhook_update', update);
+    // Log this update to our file
+    logToFile('webhook_update', update);
     
     // Enhanced handling for different types of updates
     let messageToProcess = null;
     let sourceType = '';
     
-    if (update?.message) {
+    // Check for Finandy-specific format first
+    if (update?.finandy_data) {
+      console.log('Processing as Finandy data message');
+      // Create a compatible format for our handler from Finandy data
+      messageToProcess = {
+        message_id: update.finandy_data.message_id || Date.now(),
+        text: update.finandy_data.content || '',
+        chat: { 
+          id: process.env.ADMIN_CHAT_ID || 12345678, // Use a default or configured chat ID
+          type: 'private'
+        },
+        from: {
+          id: 0,
+          first_name: 'Finandy',
+          username: 'finandy_system'
+        },
+        date: update.finandy_data.timestamp || Math.floor(Date.now() / 1000)
+      };
+      sourceType = 'finandy_data';
+    } else if (update?.message) {
       console.log('Processing as regular message');
       messageToProcess = update.message;
       sourceType = 'message';
@@ -121,8 +165,13 @@ app.post('/webhook', async (req, res) => {
         messageToProcess
       });
       
+      // Special handling for Finandy data
+      if (sourceType === 'finandy_data') {
+        console.log('Processing Finandy data specially');
+        await processFinandyData(messageToProcess, update.finandy_data);
+      } 
       // Special handling for channel posts
-      if (sourceType === 'channel_post' || sourceType === 'edited_channel_post') {
+      else if (sourceType === 'channel_post' || sourceType === 'edited_channel_post') {
         await processChannelPost(messageToProcess);
       } else {
         // Regular message handling
@@ -607,29 +656,25 @@ async function processChannelPost(post) {
   }
 }
 
-// Helper function to log data to external debug service
+// Replace or update the logToDebugService function
 async function logToDebugService(type, data) {
   try {
-    console.log(`Logging ${type} data to debug service`);
+    // Log to file (new method)
+    logToFile(type, data);
     
-    // Create payload with timestamp
-    const payload = {
-      type,
-      timestamp: new Date().toISOString(),
-      data
-    };
-    
-    // Send to debug service
-    const response = await axios.post(DEBUG_LOG_URL, payload, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 5000 // 5 second timeout so it doesn't block operations
-    });
-    
-    console.log(`Debug log sent: ${response.status}`);
-    return true;
+    // Try the old URL just in case, but don't fail if it doesn't work
+    try {
+      const url = DEBUG_LOG_URL;
+      await axios.post(url, {
+        type,
+        data,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.log('Debug service unavailable, using file logging only');
+    }
   } catch (error) {
-    console.error(`Error logging to debug service: ${error.message}`);
-    return false;
+    console.error('Error in logToDebugService:', error);
   }
 }
 
@@ -748,4 +793,323 @@ app.get('/test-signal/:signalType', async (req, res) => {
       error: error.message
     });
   }
-}); 
+});
+
+// Add an endpoint to view logs
+app.get('/logs', (req, res) => {
+  try {
+    const fileType = req.query.type || 'webhook_update'; // Default to webhook updates
+    const date = req.query.date || new Date().toISOString().split('T')[0]; // Default to today
+    const logFileName = path.join(logsDir, `${fileType}_${date}.log`);
+    
+    if (fs.existsSync(logFileName)) {
+      // Read the log file
+      const logData = fs.readFileSync(logFileName, 'utf8');
+      
+      // Format as readable JSON
+      const logs = logData
+        .split(',\n')
+        .filter(log => log.trim()) // Filter out empty lines
+        .map(log => {
+          try {
+            return JSON.parse(log);
+          } catch (e) {
+            return { error: 'Failed to parse log entry', raw: log };
+          }
+        });
+      
+      // Provide simple HTML UI
+      res.send(`
+        <html>
+          <head>
+            <title>Bot Logs</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow: auto; }
+              .controls { margin-bottom: 20px; }
+              select, input, button { padding: 8px; margin-right: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>Telegram Bot Logs</h1>
+            <div class="controls">
+              <form action="/logs" method="get">
+                <select name="type">
+                  <option value="webhook_update" ${fileType === 'webhook_update' ? 'selected' : ''}>Webhook Updates</option>
+                  <option value="telegram_message" ${fileType === 'telegram_message' ? 'selected' : ''}>Telegram Messages</option>
+                  <option value="webhook_error" ${fileType === 'webhook_error' ? 'selected' : ''}>Webhook Errors</option>
+                </select>
+                <input type="date" name="date" value="${date}">
+                <button type="submit">View Logs</button>
+              </form>
+            </div>
+            <h2>${logs.length} Logs Found</h2>
+            <pre>${JSON.stringify(logs, null, 2)}</pre>
+          </body>
+        </html>
+      `);
+    } else {
+      res.status(404).send(`
+        <html>
+          <head>
+            <title>Bot Logs</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              .controls { margin-bottom: 20px; }
+              select, input, button { padding: 8px; margin-right: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>Telegram Bot Logs</h1>
+            <div class="controls">
+              <form action="/logs" method="get">
+                <select name="type">
+                  <option value="webhook_update">Webhook Updates</option>
+                  <option value="telegram_message">Telegram Messages</option>
+                  <option value="webhook_error">Webhook Errors</option>
+                </select>
+                <input type="date" name="date" value="${date}">
+                <button type="submit">View Logs</button>
+              </form>
+            </div>
+            <h2>No logs found for ${fileType} on ${date}</h2>
+          </body>
+        </html>
+      `);
+    }
+  } catch (error) {
+    res.status(500).send(`Error retrieving logs: ${error.message}`);
+  }
+});
+
+// Add an API endpoint to get logs as JSON
+app.get('/api/logs', (req, res) => {
+  try {
+    const fileType = req.query.type || 'webhook_update';
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+    const logFileName = path.join(logsDir, `${fileType}_${date}.log`);
+    
+    if (fs.existsSync(logFileName)) {
+      const logData = fs.readFileSync(logFileName, 'utf8');
+      const logs = logData
+        .split(',\n')
+        .filter(log => log.trim())
+        .map(log => {
+          try {
+            return JSON.parse(log);
+          } catch (e) {
+            return { error: 'Failed to parse log entry', raw: log };
+          }
+        });
+      
+      res.json(logs);
+    } else {
+      res.status(404).json({ error: 'No logs found for the specified date and type' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add an endpoint for testing different types of webhook messages
+app.get('/test-webhook', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Test Webhook</title>
+        <style>
+          body { font-family: sans-serif; margin: 20px; max-width: 800px; }
+          textarea { width: 100%; height: 200px; margin-bottom: 10px; }
+          button { padding: 10px; margin-right: 10px; }
+          .response { background: #f4f4f4; padding: 10px; border-radius: 5px; margin-top: 20px; }
+          h2 { color: #333; }
+        </style>
+      </head>
+      <body>
+        <h1>Webhook Tester</h1>
+        <p>Use this page to simulate different types of webhook payloads to test your bot handling.</p>
+        
+        <h2>Message Payload</h2>
+        <textarea id="payload">{
+  "update_id": 123456789,
+  "message": {
+    "message_id": 123,
+    "from": {
+      "id": 12345678,
+      "first_name": "Test",
+      "username": "testuser"
+    },
+    "chat": {
+      "id": 12345678,
+      "first_name": "Test",
+      "username": "testuser",
+      "type": "private"
+    },
+    "date": 1612345678,
+    "text": "DOGEFDUSD testing"
+  }
+}</textarea>
+        
+        <div>
+          <button id="send">Send Test Webhook</button>
+          <button id="preset-message">Regular Message</button>
+          <button id="preset-channel">Channel Post</button>
+          <button id="preset-edited">Edited Message</button>
+          <button id="preset-finandy">Finandy Message</button>
+        </div>
+        
+        <div class="response" id="response">
+          <h2>Response</h2>
+          <pre>No response yet</pre>
+        </div>
+        
+        <script>
+          document.getElementById('send').addEventListener('click', async () => {
+            const payload = JSON.parse(document.getElementById('payload').value);
+            const response = await fetch('/webhook', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
+            });
+            
+            document.querySelector('#response pre').textContent = 
+              "Status: " + response.status + " " + response.statusText + "\\n" +
+              "Response: " + await response.text();
+          });
+          
+          document.getElementById('preset-message').addEventListener('click', () => {
+            document.getElementById('payload').value = JSON.stringify({
+              update_id: 123456789,
+              message: {
+                message_id: 123,
+                from: {
+                  id: 12345678,
+                  first_name: "Test",
+                  username: "testuser"
+                },
+                chat: {
+                  id: 12345678,
+                  first_name: "Test",
+                  username: "testuser",
+                  type: "private"
+                },
+                date: 1612345678,
+                text: "DOGEFDUSD testing"
+              }
+            }, null, 2);
+          });
+          
+          document.getElementById('preset-channel').addEventListener('click', () => {
+            document.getElementById('payload').value = JSON.stringify({
+              update_id: 123456789,
+              channel_post: {
+                message_id: 123,
+                chat: {
+                  id: -1001234567890,
+                  title: "Test Channel",
+                  type: "channel"
+                },
+                date: 1612345678,
+                text: "DOGEFDUSD testing from channel"
+              }
+            }, null, 2);
+          });
+          
+          document.getElementById('preset-edited').addEventListener('click', () => {
+            document.getElementById('payload').value = JSON.stringify({
+              update_id: 123456789,
+              edited_message: {
+                message_id: 123,
+                from: {
+                  id: 12345678,
+                  first_name: "Test",
+                  username: "testuser"
+                },
+                chat: {
+                  id: 12345678,
+                  first_name: "Test",
+                  username: "testuser",
+                  type: "private"
+                },
+                date: 1612345678,
+                edit_date: 1612345680,
+                text: "DOGEFDUSD edited testing"
+              }
+            }, null, 2);
+          });
+          
+          document.getElementById('preset-finandy').addEventListener('click', () => {
+            document.getElementById('payload').value = JSON.stringify({
+              update_id: 123456789,
+              // Custom Finandy format - you may need to adjust this based on what you observe
+              finandy_data: {
+                message_id: 123,
+                content: "DOGEFDUSD signal from Finandy",
+                source: "finandy",
+                timestamp: 1612345678
+              }
+            }, null, 2);
+          });
+        </script>
+      </body>
+    </html>
+  `);
+});
+
+// New function to handle Finandy data
+async function processFinandyData(formattedMessage, originalData) {
+  try {
+    console.log('Processing Finandy data:', JSON.stringify(originalData));
+    
+    // Check if this is a trading signal message - look for key terms
+    const messageText = formattedMessage.text || '';
+    
+    if (messageText.includes('DOGEFDUSD')) {
+      console.log('Detected incoming Finandy trading signal for DOGEFDUSD');
+      
+      const symbol = 'DOGEFDUSD';
+      
+      // Determine if this is a buy or sell signal based on message content
+      let side = 'buy'; // Default
+      
+      // Check for various patterns indicating a SELL signal
+      if (messageText.includes('position is closed') || 
+          messageText.includes('#CLOSED') || 
+          messageText.includes('SHORT')) {
+        side = 'sell';
+      }
+      
+      // Forward this specific trading signal
+      try {
+        await sendSpecificTradingSignal(symbol, side);
+        console.log(`Successfully processed Finandy signal: ${symbol} ${side}`);
+        
+        // Log success
+        logToFile('finandy_success', {
+          originalData,
+          processedSignal: { symbol, side }
+        });
+        
+        return true;
+      } catch (error) {
+        console.error('Error processing Finandy trading signal:', error.message);
+        
+        // Log error
+        logToFile('finandy_error', {
+          error: error.message,
+          originalData
+        });
+        
+        return false;
+      }
+    } else {
+      console.log('Finandy message does not contain expected trading signal');
+      return false;
+    }
+  } catch (error) {
+    console.error('Error in processFinandyData:', error);
+    return false;
+  }
+} 
